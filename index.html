@@ -1,0 +1,663 @@
+<!-- 
+  FILENAME: ai_studio_code (33).html 
+  FIXES: Chemistry/Math Tab Filtering Bug
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Mistake Note (Farwed Edition)</title>
+    <style>
+        :root {
+            /* Palette */
+            --bg-color: #f8fafc;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --card-bg: #ffffff;
+            
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            
+            --success: #10b981;
+            --error: #ef4444;
+            
+            /* Model Colors */
+            --mod-3pro: #7e22ce;   /* Purple */
+            --mod-3flash: #ea580c; /* Orange */
+            --mod-25pro: #2563eb;  /* Blue */
+            --mod-25flash: #059669;/* Emerald */
+            --mod-lite: #64748b;   /* Slate */
+
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --radius: 16px;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+
+        /* --- LAYOUT --- */
+        .app-wrapper {
+            display: flex;
+            flex-direction: row;
+            max-width: 1300px;
+            margin: 0 auto;
+            padding: 20px;
+            gap: 30px;
+            align-items: flex-start;
+        }
+
+        .main-content {
+            flex: 2;
+            min-width: 0;
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar {
+            flex: 1;
+            background: white;
+            padding: 25px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-md);
+            position: sticky;
+            top: 20px;
+            max-width: 350px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .sidebar h2 { margin-top: 0; font-size: 1.2rem; color: var(--text-primary); }
+        .sidebar p { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; }
+
+        .model-legend-item {
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 12px;
+            border-left: 5px solid #ccc;
+            background: #f8fafc;
+            transition: transform 0.2s;
+        }
+        .model-legend-item:hover { transform: translateX(5px); background: #fff; box-shadow: var(--shadow-md); }
+
+        .mod-name { font-weight: 800; font-size: 1rem; display: flex; justify-content: space-between; }
+        .mod-trust { font-size: 0.8rem; font-weight: 700; margin-top: 5px; }
+        .mod-desc { font-size: 0.8rem; color: #64748b; margin-top: 5px; line-height: 1.4; }
+        .mod-intensity { 
+            font-size: 0.7rem; 
+            text-transform: uppercase; 
+            letter-spacing: 0.5px; 
+            font-weight: 700; 
+            margin-top: 8px; 
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.05);
+        }
+
+        /* Model Specific Colors */
+        .mod-box-3pro { border-color: var(--mod-3pro); }
+        .mod-box-3pro .mod-name { color: var(--mod-3pro); }
+        
+        .mod-box-3flash { border-color: var(--mod-3flash); }
+        .mod-box-3flash .mod-name { color: var(--mod-3flash); }
+
+        .mod-box-25pro { border-color: var(--mod-25pro); }
+        .mod-box-25pro .mod-name { color: var(--mod-25pro); }
+
+        .mod-box-25flash { border-color: var(--mod-25flash); }
+        .mod-box-25flash .mod-name { color: var(--mod-25flash); }
+
+        /* --- HEADER & PFP --- */
+        header {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-md);
+            margin-bottom: 30px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+
+        .profile-section { margin-bottom: 20px; }
+        .pfp-img {
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            border: 3px solid var(--accent);
+            box-shadow: 0 4px 6px rgba(99, 102, 241, 0.3);
+            transition: transform 0.3s;
+        }
+        .pfp-img:hover { transform: rotate(10deg) scale(1.1); }
+        
+        .creator-tag { font-size: 0.9rem; color: var(--text-secondary); margin-top: 5px; }
+        .creator-name { 
+            font-weight: 800; 
+            background: linear-gradient(90deg, var(--accent), #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .description-box {
+            background: #f1f5f9;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            color: #475569;
+            text-align: left;
+            margin: 20px 0;
+            border-left: 4px solid var(--accent);
+        }
+
+        h1 { margin: 10px 0; font-size: 1.8rem; letter-spacing: -0.5px; }
+        
+        a { color: var(--accent); font-weight: 600; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* --- INPUTS & BUTTONS --- */
+        .api-input {
+            width: 100%; box-sizing: border-box; padding: 12px; border: 2px solid #e2e8f0;
+            border-radius: 10px; margin-bottom: 15px; font-size: 0.9rem;
+        }
+        .api-input:focus { outline: none; border-color: var(--accent); }
+
+        .file-drop-zone {
+            border: 2px dashed #cbd5e0; padding: 30px; border-radius: 12px;
+            cursor: pointer; background: #f8fafc; color: var(--text-secondary);
+            transition: 0.2s;
+        }
+        .file-drop-zone:hover { border-color: var(--accent); background: #eef2ff; color: var(--accent); }
+
+        .control-bar { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
+        .action-btn {
+            padding: 8px 16px; border: none; border-radius: 20px; cursor: pointer;
+            font-weight: 600; font-size: 0.85rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: 0.2s;
+        }
+        .action-btn:hover { transform: translateY(-2px); }
+        .btn-reveal { background: #fbbf24; color: #1e293b; }
+        .btn-reset { background: var(--accent); color: white; }
+        .btn-clear { background: #e2e8f0; color: #475569; }
+
+        /* --- TABS --- */
+        .tabs-nav { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 20px; justify-content: flex-start; scrollbar-width: none; }
+        .tabs-nav::-webkit-scrollbar { display: none; }
+        .tab-btn {
+            padding: 6px 14px; border-radius: 20px; border: 1px solid transparent;
+            background: transparent; color: var(--text-secondary); cursor: pointer; font-weight: 600; font-size: 0.85rem;
+            white-space: nowrap;
+        }
+        .tab-btn.active { background: white; color: var(--accent); border-color: #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+        /* --- CARDS --- */
+        .question-card {
+            background: white; border-radius: var(--radius); padding: 25px; margin-bottom: 25px;
+            box-shadow: var(--shadow-md); position: relative; border: 1px solid #f1f5f9;
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .subject-tag {
+            font-size: 0.7rem; font-weight: 800; text-transform: uppercase; color: var(--accent);
+            background: #eef2ff; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-bottom: 10px;
+        }
+        
+        .question-text { 
+            font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 15px; 
+            white-space: pre-wrap;
+        }
+        
+        /* Formatting classes */
+        .fmt-bold { color: var(--accent); font-weight: 800; }
+        .fmt-sub { font-size: 0.75em; vertical-align: sub; }
+        .fmt-sup { font-size: 0.75em; vertical-align: super; }
+        
+        /* Model Badge */
+        .ai-badge {
+            font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 600;
+            display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgba(0,0,0,0.1);
+        }
+        .ai-badge.gemini-3-pro-preview { background: #f3e8ff; color: var(--mod-3pro); border-color: var(--mod-3pro); }
+        .ai-badge.gemini-3-flash-preview { background: #ffedd5; color: var(--mod-3flash); border-color: var(--mod-3flash); }
+        .ai-badge.gemini-2\.5-pro { background: #dbeafe; color: var(--mod-25pro); border-color: var(--mod-25pro); }
+        .ai-badge.gemini-2\.5-flash { background: #d1fae5; color: var(--mod-25flash); border-color: var(--mod-25flash); }
+
+        .options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 20px; }
+        .option-btn {
+            padding: 15px; border: 2px solid #f1f5f9; border-radius: 12px; background: white;
+            cursor: pointer; text-align: left; transition: 0.2s; color: #334155; position: relative;
+        }
+        .option-btn:hover:not(.disabled) { border-color: var(--accent); background: #f8fafc; }
+        
+        .option-btn.correct { background: var(--success) !important; color: white !important; border-color: var(--success) !important; }
+        .option-btn.incorrect { background: var(--error) !important; color: white !important; border-color: var(--error) !important; }
+        .question-card.solved .option-btn { cursor: default; }
+
+        /* Mistake Badge */
+        .mistake-badge {
+            position: absolute; top: -8px; right: -8px; background: #ef4444; color: white;
+            font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 700;
+            display: none; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+        }
+        .option-btn.show-badge .mistake-badge { display: block; animation: popIn 0.2s; }
+        @keyframes popIn { from { transform: scale(0); } to { transform: scale(1); } }
+
+        /* Explanation */
+        .explain-btn {
+            margin-top: 15px; background: linear-gradient(135deg, var(--accent), #818cf8);
+            color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer;
+            font-size: 0.9rem; font-weight: 600; display: none; width: 100%;
+        }
+        .show-explains .explain-btn { display: block; }
+
+        .explanation-box {
+            background: #f0f9ff; border-left: 4px solid #38bdf8; padding: 15px;
+            margin-top: 15px; border-radius: 8px; font-size: 0.95rem; color: #0f172a;
+            display: none;
+            line-height: 1.6;
+        }
+        .explanation-box.visible { display: block; }
+        
+        .explainer-tag {
+            font-size: 0.7rem; text-transform: uppercase; color: #64748b; margin-bottom: 5px; display: block; font-weight: 700;
+        }
+
+        .pc-only-note {
+            display: none;
+            background: #fffbeb; border: 1px solid #fcd34d; color: #92400e;
+            padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.85rem;
+            text-align: center; font-weight: 600;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 900px) {
+            body { padding: 10px; }
+            .app-wrapper { flex-direction: column-reverse; padding: 0; gap: 20px; }
+            .sidebar { width: 100%; max-width: none; box-sizing: border-box; position: static; }
+            .main-content { width: 100%; }
+            .question-card { padding: 15px; }
+            h1 { font-size: 1.5rem; }
+            .pc-only-note { display: block; }
+        }
+    </style>
+</head>
+<body class="show-explains">
+
+<div class="app-wrapper">
+    
+    <main class="main-content">
+        <div class="pc-only-note">
+            📱 Note: This website works best on a Laptop/PC.
+        </div>
+
+        <header>
+            <div class="profile-section">
+                <img src="https://i.postimg.cc/MKthhghq/3e5c53781e906ac48a73ff4b85860368.gif" alt="Farwed" class="pfp-img">
+                <div class="creator-tag">Made by <span class="creator-name">Farwed (Mohamed Ashour)</span></div>
+            </div>
+
+            <h1>Universal Mistake Note</h1>
+            
+            <div class="description-box">
+                <b>Why this exists?</b><br>
+                Studies prove that <i>Active Recall</i> and analyzing errors is the fastest way to learn. It's the cheat code for <b>Thanawya 3ama</b>. Writing mistakes manually is boring, so I made this AI tool to do it for us. Snap a pic, learn, and good luck! 🚀
+            </div>
+
+            <a href="https://aistudio.google.com/app/apikey" target="_blank">🔑 Get Free Gemini API Key</a>
+            
+            <div style="margin: 20px 0;">
+                <input type="password" id="apiKey" class="api-input" placeholder="Paste Gemini API Key here" />
+                
+                <div class="file-drop-zone" onclick="document.getElementById('fileInput').click()">
+                    <div style="font-size: 1.5rem">📸 Upload Screenshot</div>
+                    <small>Auto-detects Subject (Math, Chem, etc)</small>
+                    <input type="file" id="fileInput" accept="image/*" style="display: none" onchange="handleImageUpload(this)">
+                </div>
+            </div>
+
+            <div class="control-bar">
+                <button class="action-btn btn-reveal" onclick="revealAll()">👁️ Reveal All</button>
+                <button class="action-btn btn-reset" onclick="resetAllProgress()">🔄 Reset All</button>
+                <button class="action-btn btn-clear" onclick="clearStorage()">🗑️ Clear</button>
+            </div>
+            
+            <div id="loading" style="display:none; color:var(--accent); font-weight:bold; margin-top:10px;">
+                🧠 AI is analyzing... <span id="loading-model" style="font-weight:normal; color:#64748b; font-size:0.8rem;"></span>
+            </div>
+        </header>
+
+        <nav class="tabs-nav">
+            <button class="tab-btn active" onclick="setTab('All')">All</button>
+            <button class="tab-btn" onclick="setTab('Math')">Math</button>
+            <button class="tab-btn" onclick="setTab('Physics')">Physics</button>
+            <button class="tab-btn" onclick="setTab('Chemistry')">Chemistry</button>
+            <button class="tab-btn" onclick="setTab('Biology')">Biology</button>
+            <button class="tab-btn" onclick="setTab('English')">English</button>
+            <button class="tab-btn" onclick="setTab('Arabic')">Arabic</button>
+        </nav>
+
+        <div id="quiz-area"></div>
+    </main>
+
+    <aside class="sidebar">
+        <h2>🤖 AI Brains Menu</h2>
+        <p>Know which model you are trusting.</p>
+
+        <div class="model-legend-item mod-box-3pro">
+            <div class="mod-name">Gem 3 Pro <span>💎</span></div>
+            <div class="mod-trust" style="color:var(--mod-3pro)">Trust Level: 99%</div>
+            <div class="mod-intensity">Very High Intensity</div>
+            <div class="mod-desc">The smartest model available. Rely on this for complex Physics or Math problems.</div>
+        </div>
+
+        <div class="model-legend-item mod-box-3flash">
+            <div class="mod-name">Gem 3 Flash <span>⚡</span></div>
+            <div class="mod-trust" style="color:var(--mod-3flash)">Trust Level: 95%</div>
+            <div class="mod-intensity">High Intensity</div>
+            <div class="mod-desc">Very smart and faster. Great for Chemistry and Biology.</div>
+        </div>
+
+        <div class="model-legend-item mod-box-25pro">
+            <div class="mod-name">Gem 2.5 Pro <span>🧠</span></div>
+            <div class="mod-trust" style="color:var(--mod-25pro)">Trust Level: 90%</div>
+            <div class="mod-intensity">Medium Intensity</div>
+            <div class="mod-desc">Solid logic, good for languages and standard questions.</div>
+        </div>
+
+        <div class="model-legend-item mod-box-25flash">
+            <div class="mod-name">Gem 2.5 Flash <span>🚀</span></div>
+            <div class="mod-trust" style="color:var(--mod-25flash)">Trust Level: 55%</div>
+            <div class="mod-intensity">Low Intensity</div>
+            <div class="mod-desc">Not that smart. Fast but double-check the answer.</div>
+        </div>
+    </aside>
+
+</div>
+
+<script>
+    // --- CONFIG & STATE ---
+    let quizData = JSON.parse(localStorage.getItem('universalMistakeData')) || [];
+    let currentTab = 'All';
+    
+    // LOCKED MODEL LIST
+    const MODEL_CASCADE = [
+        'gemini-3-pro-preview',
+        'gemini-3-flash-preview',
+        'gemini-2.5-pro',
+        'gemini-2.5-flash',
+        'gemini-2.5-flash-lite'
+    ];
+
+    function formatModelName(m) {
+        if(m.includes('gemini-3-pro')) return 'Gem 3 Pro';
+        if(m.includes('gemini-3-flash')) return 'Gem 3 Flash';
+        if(m.includes('gemini-2.5-pro')) return 'Gem 2.5 Pro';
+        if(m.includes('gemini-2.5-flash')) return 'Gem 2.5 Flash';
+        return m; 
+    }
+
+    // --- TEXT FORMATTER ---
+    function formatText(text) {
+        if (!text) return '';
+        let cleaned = text
+            .replace(/\$\\text\{([^}]+)\}\$/g, '$1')
+            .replace(/\\text\{([^}]+)\}/g, '$1')
+            .replace(/\$/g, '')
+            .replace(/\*\*([^*]+)\*\*/g, '<b class="fmt-bold">$1</b>')
+            .replace(/\*([^*]+)\*/g, '<i>$1</i>');
+        cleaned = cleaned.replace(/([A-Z][a-z]?)(\d+)/g, '$1<sub class="fmt-sub">$2</sub>');
+        cleaned = cleaned.replace(/_(\d+)/g, '<sub class="fmt-sub">$1</sub>');
+        cleaned = cleaned.replace(/\^(\d+)/g, '<sup class="fmt-sup">$1</sup>');
+        return cleaned;
+    }
+
+    const apiKeyInput = document.getElementById('apiKey');
+    const quizArea = document.getElementById('quiz-area');
+    const loadingDiv = document.getElementById('loading');
+    const loadingModelSpan = document.getElementById('loading-model');
+
+    if(localStorage.getItem('geminiApiKey')) apiKeyInput.value = localStorage.getItem('geminiApiKey');
+    apiKeyInput.addEventListener('change', (e) => localStorage.setItem('geminiApiKey', e.target.value));
+
+    // --- AI LOGIC ---
+    async function callGemini(apiKey, payload, index = 0) {
+        if (index >= MODEL_CASCADE.length) throw new Error("All models failed.");
+        const model = MODEL_CASCADE[index];
+        loadingModelSpan.innerText = `Attempting: ${formatModelName(model)}...`;
+
+        try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                console.warn(`${model} failed.`);
+                return callGemini(apiKey, payload, index + 1);
+            }
+            return { data, model };
+        } catch (err) {
+            return callGemini(apiKey, payload, index + 1);
+        }
+    }
+
+    async function handleImageUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const apiKey = apiKeyInput.value.trim();
+        if (!apiKey) return alert("Please enter API Key");
+
+        loadingDiv.style.display = 'block';
+
+        try {
+            const base64 = await new Promise(r => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => r(reader.result.split(',')[1]);
+            });
+
+            // STRICTER PROMPT FOR SUBJECT
+            const prompt = `
+                Analyze screenshot.
+                1. DETECT SUBJECT STRICTLY as one of: "Math", "Physics", "Chemistry", "Biology", "English", "Arabic". If not one of these, use "Other". Do not abbreviate (e.g., don't use "Chem", use "Chemistry").
+                2. EXTRACT QUESTION.
+                3. EXTRACT OPTIONS (generate if missing).
+                4. IDENTIFY CORRECT ANSWER.
+                5. DETECT USER MISTAKE (Red marks/text).
+
+                Output JSON:
+                { "subject": "String", "question": "String", "options": ["A","B","C","D"], "answer": "String", "originalWrong": "String|null" }
+            `;
+
+            const { data, model } = await callGemini(apiKey, {
+                contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: file.type, data: base64 } }] }]
+            });
+            
+            const text = data.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
+            const result = JSON.parse(text);
+
+            if (!result.options.includes(result.answer)) result.options.push(result.answer);
+
+            quizData.push({ 
+                ...result, 
+                solved: false, 
+                userSelected: null, 
+                modelUsed: model, 
+                explanation: null,
+                explanationModel: null
+            });
+            
+            saveData();
+            setTab('All');
+            input.value = '';
+
+        } catch (e) {
+            alert("Error: " + e.message);
+        } finally {
+            loadingDiv.style.display = 'none';
+        }
+    }
+
+    async function explainQuestion(index) {
+        const apiKey = apiKeyInput.value.trim();
+        if(!apiKey) return alert("Need API Key");
+
+        const item = quizData[index];
+        const btn = document.getElementById(`explain-btn-${index}`);
+        const box = document.getElementById(`explain-box-${index}`);
+        
+        if(item.explanation) {
+            box.classList.add('visible'); btn.style.display = 'none'; return;
+        }
+
+        btn.innerText = "Generating...";
+        btn.disabled = true;
+
+        try {
+            const prompt = `Explain why "${item.answer}" is the correct answer for: "${item.question}". Be concise. Do NOT use Latex, use simple text.`;
+            const { data, model } = await callGemini(apiKey, { contents: [{ parts: [{ text: prompt }] }] });
+            
+            item.explanation = data.candidates[0].content.parts[0].text;
+            item.explanationModel = model;
+            saveData();
+            render(); 
+        } catch(e) {
+            alert("Failed: " + e.message);
+            btn.innerText = "Try Again";
+            btn.disabled = false;
+        }
+    }
+
+    // --- RENDER & TABS ---
+    function setTab(t) {
+        currentTab = t;
+        document.querySelectorAll('.tab-btn').forEach(b => {
+            b.classList.remove('active');
+            if(b.innerText === t) b.classList.add('active');
+        });
+        render();
+    }
+
+    function render() {
+        quizArea.innerHTML = '';
+        
+        // FIXED FILTER LOGIC
+        const filtered = currentTab === 'All' ? quizData : quizData.filter(i => {
+            const s = (i.subject || '').toLowerCase();
+            const t = currentTab.toLowerCase();
+
+            // Explicit matches for abbreviations
+            if (t === 'chemistry') return s.includes('chem');
+            if (t === 'biology') return s.includes('bio');
+            if (t === 'math') return s.includes('math') || s.includes('alg') || s.includes('geom');
+            if (t === 'physics') return s.includes('phys');
+            if (t === 'english') return s.includes('eng');
+            
+            return s.includes(t);
+        });
+
+        if(!filtered.length) {
+            quizArea.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">No questions in ${currentTab}</div>`;
+            return;
+        }
+
+        [...filtered].reverse().forEach(item => {
+            const realIndex = quizData.indexOf(item);
+            const card = document.createElement('div');
+            card.className = `question-card ${item.solved ? 'solved' : ''}`;
+            
+            const modelShort = formatModelName(item.modelUsed || 'Unknown');
+            
+            let explainHtml = '';
+            if(item.explanation) {
+                const explainerShort = formatModelName(item.explanationModel || item.modelUsed);
+                const formattedExpl = formatText(item.explanation);
+                explainHtml = `
+                    <div class="explanation-box visible">
+                        <span class="explainer-tag">🧠 Explained by: ${explainerShort}</span>
+                        <div id="explain-content-${realIndex}">${formattedExpl}</div>
+                    </div>`;
+            }
+
+            const formattedQuestion = formatText(item.question);
+
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                    <span class="subject-tag">${item.subject || 'General'}</span>
+                    <div class="card-actions">
+                        <button class="action-btn btn-clear" onclick="resetOne(${realIndex})">↺</button>
+                        <button class="action-btn btn-clear" style="color:var(--error)" onclick="remove(${realIndex})">✕</button>
+                    </div>
+                </div>
+
+                <div class="question-text">${formattedQuestion}</div>
+                
+                <div class="ai-badge ${item.modelUsed}">
+                    🤖 Generated by: ${modelShort}
+                </div>
+
+                <div class="options-grid" id="grid-${realIndex}"></div>
+
+                ${!item.explanation ? `
+                <button id="explain-btn-${realIndex}" class="explain-btn" onclick="explainQuestion(${realIndex})">
+                    💡 Explain Answer <span style="opacity:0.8; font-weight:400; font-size:0.8em; margin-left:5px;">(Uses Tokens)</span>
+                </button>` : ''}
+                
+                ${explainHtml}
+            `;
+
+            const grid = card.querySelector('.options-grid');
+            
+            item.options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = 'option-btn';
+                
+                let badge = '';
+                if(item.originalWrong === opt) badge = `<div class="mistake-badge">PREVIOUS MISTAKE</div>`;
+                
+                const formattedOpt = formatText(opt);
+                
+                btn.innerHTML = `${formattedOpt}${badge}`;
+
+                if(item.userSelected) {
+                    if(item.userSelected === opt) {
+                        btn.classList.add(opt === item.answer ? 'correct' : 'incorrect');
+                        if(item.originalWrong === opt) btn.classList.add('show-badge');
+                    }
+                    if(item.solved && opt === item.answer) btn.classList.add('correct');
+                }
+
+                if(item.solved) btn.classList.add('disabled');
+                else btn.onclick = () => handleAnswer(realIndex, opt);
+                
+                grid.appendChild(btn);
+            });
+
+            quizArea.appendChild(card);
+        });
+    }
+
+    function handleAnswer(i, sel) {
+        const item = quizData[i];
+        if(item.solved) return;
+        item.userSelected = sel;
+        if(sel === item.answer) item.solved = true;
+        saveData(); render();
+    }
+
+    function remove(i) { if(confirm("Delete?")) { quizData.splice(i,1); saveData(); render(); }}
+    function resetOne(i) { quizData[i].solved = false; quizData[i].userSelected = null; saveData(); render(); }
+    function revealAll() { if(confirm("Reveal All?")) { quizData.forEach(q=>q.solved=true); saveData(); render(); }}
+    function resetAllProgress() { if(confirm("Reset All?")) { quizData.forEach(q=>{q.solved=false;q.userSelected=null}); saveData(); render(); }}
+    function clearStorage() { if(confirm("Clear Everything?")) { localStorage.removeItem('universalMistakeData'); quizData=[]; render(); }}
+    function saveData() { localStorage.setItem('universalMistakeData', JSON.stringify(quizData)); }
+
+    render();
+</script>
+
+</body>
+</html>
