@@ -1,6 +1,6 @@
 <!-- 
   FILENAME: index.html 
-  FIXES: Chemistry/Math Tab Filtering Bug
+  FIXES: Added Personal Notes Feature (Persistent & Toggleable)
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -181,6 +181,7 @@
         .btn-reveal { background: #fbbf24; color: #1e293b; }
         .btn-reset { background: var(--accent); color: white; }
         .btn-clear { background: #e2e8f0; color: #475569; }
+        .btn-notes { background: #10b981; color: white; }
 
         /* --- TABS --- */
         .tabs-nav { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 20px; justify-content: flex-start; scrollbar-width: none; }
@@ -265,12 +266,40 @@
             font-size: 0.7rem; text-transform: uppercase; color: #64748b; margin-bottom: 5px; display: block; font-weight: 700;
         }
 
+        /* NOTES SECTION */
+        .note-wrapper {
+            margin-top: 15px;
+            border-top: 2px dashed #e2e8f0;
+            padding-top: 15px;
+            display: none;
+            animation: fadeIn 0.3s;
+        }
+        .note-wrapper.visible { display: block; }
+        
+        .note-label { font-size: 0.8rem; font-weight: 700; color: #64748b; margin-bottom: 5px; display: block; }
+        
+        .user-note-input {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            resize: vertical;
+            min-height: 80px;
+            background: #fffdf0; /* light yellow post-it vibe */
+            color: #475569;
+        }
+        .user-note-input:focus { outline: none; border-color: #f59e0b; background: #fff; }
+
         .pc-only-note {
             display: none;
             background: #fffbeb; border: 1px solid #fcd34d; color: #92400e;
             padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.85rem;
             text-align: center; font-weight: 600;
         }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         /* Mobile Responsive */
         @media (max-width: 900px) {
@@ -327,6 +356,7 @@
             </div>
 
             <div class="control-bar">
+                <button class="action-btn btn-notes" onclick="toggleGlobalNotes()">📝 Toggle Notes</button>
                 <button class="action-btn btn-reveal" onclick="revealAll()">👁️ Reveal All</button>
                 <button class="action-btn btn-reset" onclick="resetAllProgress()">🔄 Reset All</button>
                 <button class="action-btn btn-clear" onclick="clearStorage()">🗑️ Clear</button>
@@ -389,6 +419,7 @@
     // --- CONFIG & STATE ---
     let quizData = JSON.parse(localStorage.getItem('universalMistakeData')) || [];
     let currentTab = 'All';
+    let globalNotesToggleState = false; // Tracks if the global button was clicked
     
     // LOCKED MODEL LIST
     const MODEL_CASCADE = [
@@ -468,7 +499,6 @@
                 reader.onload = () => r(reader.result.split(',')[1]);
             });
 
-            // STRICTER PROMPT FOR SUBJECT
             const prompt = `
                 Analyze screenshot.
                 1. DETECT SUBJECT STRICTLY as one of: "Math", "Physics", "Chemistry", "Biology", "English", "Arabic". If not one of these, use "Other". Do not abbreviate (e.g., don't use "Chem", use "Chemistry").
@@ -496,7 +526,9 @@
                 userSelected: null, 
                 modelUsed: model, 
                 explanation: null,
-                explanationModel: null
+                explanationModel: null,
+                userNote: "",      // NEW: Store user note
+                noteVisible: false // NEW: Individual toggle state
             });
             
             saveData();
@@ -540,6 +572,28 @@
         }
     }
 
+    // --- NOTE LOGIC ---
+    function updateNote(index, text) {
+        quizData[index].userNote = text;
+        saveData(); // Save instantly to local storage
+    }
+
+    function toggleNote(index) {
+        quizData[index].noteVisible = !quizData[index].noteVisible;
+        saveData();
+        render();
+    }
+
+    function toggleGlobalNotes() {
+        globalNotesToggleState = !globalNotesToggleState;
+        // Update ALL to match the global state
+        quizData.forEach(q => {
+            q.noteVisible = globalNotesToggleState;
+        });
+        saveData();
+        render();
+    }
+
     // --- RENDER & TABS ---
     function setTab(t) {
         currentTab = t;
@@ -553,12 +607,10 @@
     function render() {
         quizArea.innerHTML = '';
         
-        // FIXED FILTER LOGIC
         const filtered = currentTab === 'All' ? quizData : quizData.filter(i => {
             const s = (i.subject || '').toLowerCase();
             const t = currentTab.toLowerCase();
 
-            // Explicit matches for abbreviations
             if (t === 'chemistry') return s.includes('chem');
             if (t === 'biology') return s.includes('bio');
             if (t === 'math') return s.includes('math') || s.includes('alg') || s.includes('geom');
@@ -593,12 +645,16 @@
 
             const formattedQuestion = formatText(item.question);
 
+            // Note Visibility Class
+            const noteClass = item.noteVisible ? 'visible' : '';
+
             card.innerHTML = `
                 <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;">
                     <span class="subject-tag">${item.subject || 'General'}</span>
                     <div class="card-actions">
-                        <button class="action-btn btn-clear" onclick="resetOne(${realIndex})">↺</button>
-                        <button class="action-btn btn-clear" style="color:var(--error)" onclick="remove(${realIndex})">✕</button>
+                        <button class="action-btn btn-clear" title="Toggle Note" onclick="toggleNote(${realIndex})">📝</button>
+                        <button class="action-btn btn-clear" title="Reset" onclick="resetOne(${realIndex})">↺</button>
+                        <button class="action-btn btn-clear" title="Delete" style="color:var(--error)" onclick="remove(${realIndex})">✕</button>
                     </div>
                 </div>
 
@@ -616,6 +672,11 @@
                 </button>` : ''}
                 
                 ${explainHtml}
+
+                <div class="note-wrapper ${noteClass}">
+                    <span class="note-label">YOUR NOTES (Saves Automatically):</span>
+                    <textarea class="user-note-input" placeholder="Write why you missed this or a quick reminder..." oninput="updateNote(${realIndex}, this.value)">${item.userNote || ''}</textarea>
+                </div>
             `;
 
             const grid = card.querySelector('.options-grid');
@@ -657,11 +718,13 @@
         saveData(); render();
     }
 
-    function remove(i) { if(confirm("Delete?")) { quizData.splice(i,1); saveData(); render(); }}
+    function remove(i) { if(confirm("Delete this question? Notes will also be deleted.")) { quizData.splice(i,1); saveData(); render(); }}
+    // Reset does not touch userNote
     function resetOne(i) { quizData[i].solved = false; quizData[i].userSelected = null; saveData(); render(); }
     function revealAll() { if(confirm("Reveal All?")) { quizData.forEach(q=>q.solved=true); saveData(); render(); }}
-    function resetAllProgress() { if(confirm("Reset All?")) { quizData.forEach(q=>{q.solved=false;q.userSelected=null}); saveData(); render(); }}
-    function clearStorage() { if(confirm("Clear Everything?")) { localStorage.removeItem('universalMistakeData'); quizData=[]; render(); }}
+    // Reset All does not touch userNote
+    function resetAllProgress() { if(confirm("Reset All Progress? (Notes will stay)")) { quizData.forEach(q=>{q.solved=false;q.userSelected=null}); saveData(); render(); }}
+    function clearStorage() { if(confirm("Clear Everything? This deletes all questions and notes.")) { localStorage.removeItem('universalMistakeData'); quizData=[]; render(); }}
     function saveData() { localStorage.setItem('universalMistakeData', JSON.stringify(quizData)); }
 
     render();
