@@ -1,6 +1,6 @@
 <!-- 
   FILENAME: index.html 
-  FIXES: Added Personal Notes Feature (Persistent & Toggleable)
+  FIXES: Added QUEUE MODE (Multiple Uploads)
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -332,7 +332,6 @@
 
             <h1>Universal Mistake Note</h1>
             
-            <!-- START OF NEW DESCRIPTION -->
             <div class="description-box">
                 <b>Why I made this?</b><br>
                 Solving problems is the best way to study, but <i>Mistake Analysis</i> is the literal difference between being "average" and hitting that top 1%.
@@ -349,9 +348,9 @@
                 <input type="password" id="apiKey" class="api-input" placeholder="Paste Gemini API Key here" />
                 
                 <div class="file-drop-zone" onclick="document.getElementById('fileInput').click()">
-                    <div style="font-size: 1.5rem">📸 Upload Screenshot</div>
-                    <small>Auto-detects Subject (Math, Chem, etc)</small>
-                    <input type="file" id="fileInput" accept="image/*" style="display: none" onchange="handleImageUpload(this)">
+                    <div style="font-size: 1.5rem">📸 Upload Screenshot (Multi)</div>
+                    <small>Auto-detects Subject - Select multiple files at once</small>
+                    <input type="file" id="fileInput" accept="image/*" multiple style="display: none" onchange="handleImageUpload(this)">
                 </div>
             </div>
 
@@ -465,8 +464,7 @@
     async function callGemini(apiKey, payload, index = 0) {
         if (index >= MODEL_CASCADE.length) throw new Error("All models failed.");
         const model = MODEL_CASCADE[index];
-        loadingModelSpan.innerText = `Attempting: ${formatModelName(model)}...`;
-
+        
         try {
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
                 method: 'POST',
@@ -485,61 +483,70 @@
     }
 
     async function handleImageUpload(input) {
-        const file = input.files[0];
-        if (!file) return;
+        const files = Array.from(input.files); // Get list of files
+        if (files.length === 0) return;
+
         const apiKey = apiKeyInput.value.trim();
         if (!apiKey) return alert("Please enter API Key");
 
         loadingDiv.style.display = 'block';
 
-        try {
-            const base64 = await new Promise(r => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = () => r(reader.result.split(',')[1]);
-            });
+        // QUEUE PROCESSING
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            loadingModelSpan.innerText = `Processing image ${i + 1} of ${files.length}...`;
 
-            const prompt = `
-                Analyze screenshot.
-                1. DETECT SUBJECT STRICTLY as one of: "Math", "Physics", "Chemistry", "Biology", "English", "Arabic". If not one of these, use "Other". Do not abbreviate (e.g., don't use "Chem", use "Chemistry").
-                2. EXTRACT QUESTION.
-                3. EXTRACT OPTIONS (generate if missing).
-                4. IDENTIFY CORRECT ANSWER.
-                5. DETECT USER MISTAKE (Red marks/text).
+            try {
+                const base64 = await new Promise(r => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = () => r(reader.result.split(',')[1]);
+                });
 
-                Output JSON:
-                { "subject": "String", "question": "String", "options": ["A","B","C","D"], "answer": "String", "originalWrong": "String|null" }
-            `;
+                const prompt = `
+                    Analyze screenshot.
+                    1. DETECT SUBJECT STRICTLY as one of: "Math", "Physics", "Chemistry", "Biology", "English", "Arabic". If not one of these, use "Other". Do not abbreviate.
+                    2. EXTRACT QUESTION.
+                    3. EXTRACT OPTIONS (generate if missing).
+                    4. IDENTIFY CORRECT ANSWER.
+                    5. DETECT USER MISTAKE (Red marks/text).
 
-            const { data, model } = await callGemini(apiKey, {
-                contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: file.type, data: base64 } }] }]
-            });
-            
-            const text = data.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
-            const result = JSON.parse(text);
+                    Output JSON:
+                    { "subject": "String", "question": "String", "options": ["A","B","C","D"], "answer": "String", "originalWrong": "String|null" }
+                `;
 
-            if (!result.options.includes(result.answer)) result.options.push(result.answer);
+                const { data, model } = await callGemini(apiKey, {
+                    contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: file.type, data: base64 } }] }]
+                });
+                
+                const text = data.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
+                const result = JSON.parse(text);
 
-            quizData.push({ 
-                ...result, 
-                solved: false, 
-                userSelected: null, 
-                modelUsed: model, 
-                explanation: null,
-                explanationModel: null,
-                userNote: "",      // NEW: Store user note
-                noteVisible: false // NEW: Individual toggle state
-            });
-            
-            saveData();
-            setTab('All');
-            input.value = '';
+                if (!result.options.includes(result.answer)) result.options.push(result.answer);
 
-        } catch (e) {
-            alert("Error: " + e.message);
-        } finally {
-            loadingDiv.style.display = 'none';
+                quizData.push({ 
+                    ...result, 
+                    solved: false, 
+                    userSelected: null, 
+                    modelUsed: model, 
+                    explanation: null,
+                    explanationModel: null,
+                    userNote: "",      
+                    noteVisible: false 
+                });
+                
+                // Save after each one just in case
+                saveData();
+                setTab('All');
+
+            } catch (e) {
+                console.error("Failed on file " + i, e);
+                // We do NOT stop the queue. We just log it and continue.
+            }
         }
+        
+        loadingDiv.style.display = 'none';
+        input.value = ''; // Reset input
     }
 
     async function explainQuestion(index) {
