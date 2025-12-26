@@ -1,6 +1,6 @@
 <!-- 
   FILENAME: index.html 
-  UPDATED: Added Cloud Sync (Firebase) & Download Backup
+  VERSION: Master Edition (Full UI + Cloud Sync Fix)
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -235,10 +235,8 @@
 
         .options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 20px; }
         .option-btn { padding: 15px; border: 2px solid #f1f5f9; border-radius: 12px; background: white; cursor: pointer; text-align: left; transition: 0.2s; color: #334155; position: relative; }
-        .option-btn:hover:not(.disabled) { border-color: var(--accent); background: #f8fafc; }
         .option-btn.correct { background: var(--success) !important; color: white !important; border-color: var(--success) !important; }
         .option-btn.incorrect { background: var(--error) !important; color: white !important; border-color: var(--error) !important; }
-        .question-card.solved .option-btn { cursor: default; }
 
         .mistake-badge { position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 700; display: none; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3); }
         .option-btn.show-badge .mistake-badge { display: block; animation: popIn 0.2s; }
@@ -390,16 +388,16 @@
     import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // --- PASTE YOUR CONFIG HERE ---
+    // --- FIREBASE CONFIG ---
     const firebaseConfig = {
-    apiKey: "AIzaSyBAgbdW2bORZjvMheUQDDVBdZYmIW-549o",
-    authDomain: "mistakebank-49e80.firebaseapp.com",
-    projectId: "mistakebank-49e80",
-    storageBucket: "mistakebank-49e80.firebasestorage.app",
-    messagingSenderId: "45617623402",
-    appId: "1:45617623402:web:d3a9b0c0ed476f43113513",
-    measurementId: "G-K3WFJM5861"
-  };
+        apiKey: "AIzaSyBAgbdW2bORZjvMheUQDDVBdZYmIW-549o",
+        authDomain: "mistakebank-49e80.firebaseapp.com",
+        projectId: "mistakebank-49e80",
+        storageBucket: "mistakebank-49e80.firebasestorage.app",
+        messagingSenderId: "45617623402",
+        appId: "1:45617623402:web:d3a9b0c0ed476f43113513",
+        measurementId: "G-K3WFJM5861"
+    };
 
     let app, auth, db;
     try {
@@ -408,58 +406,35 @@
         db = getFirestore(app);
     } catch(e) { console.error("Firebase Config Missing"); }
 
-    // --- AUTH UI LOGIC ---
     let currentUser = null;
-    const provider = new GoogleAuthProvider(); // Google Provider
+    const provider = new GoogleAuthProvider();
 
-    // Add Google Button to Modal dynamically
+    // Add Google Login Button to Modal
     const modalBox = document.querySelector('.modal-box');
     const googleBtn = document.createElement('button');
     googleBtn.className = 'modal-btn-primary';
-    googleBtn.style.background = '#4285F4'; // Google Blue
+    googleBtn.style.background = '#4285F4';
     googleBtn.style.marginTop = '10px';
     googleBtn.innerHTML = '🔵 Sign in with Google';
     googleBtn.onclick = handleGoogleLogin;
-    
-    // Insert Google button before the Cancel button
-    const cancelBtn = document.querySelector('.modal-btn-secondary');
-    modalBox.insertBefore(googleBtn, cancelBtn);
+    modalBox.insertBefore(googleBtn, document.querySelector('.modal-btn-secondary'));
 
-    window.openAuthModal = () => {
-        if(currentUser) {
-            document.getElementById('auth-dropdown').classList.toggle('show');
-        } else {
-            document.getElementById('auth-modal').style.display = 'flex';
-        }
-    };
+    window.openAuthModal = () => currentUser ? document.getElementById('auth-dropdown').classList.toggle('show') : document.getElementById('auth-modal').style.display = 'flex';
+    window.closeAuthModal = () => document.getElementById('auth-modal').style.display = 'none';
 
-    window.closeAuthModal = () => {
-        document.getElementById('auth-modal').style.display = 'none';
-        document.getElementById('auth-msg').innerText = '';
-    };
-
-    // 1. Google Login Function
     async function handleGoogleLogin() {
         if(!auth) return;
         const msg = document.getElementById('auth-msg');
         msg.innerText = "Waiting for Google...";
-        try {
-            await signInWithPopup(auth, provider);
-            // onAuthStateChanged will handle the rest
-        } catch (error) {
-            msg.innerText = "Error: " + error.message;
-        }
+        try { await signInWithPopup(auth, provider); } catch (error) { msg.innerText = "Error: " + error.message; }
     }
 
-    // 2. Email/Pass Function
     window.handleAuthAction = async () => {
         const email = document.getElementById('auth-email').value;
         const pass = document.getElementById('auth-pass').value;
         const msg = document.getElementById('auth-msg');
-
         if(!email || !pass) return msg.innerText = "Please fill all fields";
         msg.innerText = "Processing...";
-        
         try {
             await signInWithEmailAndPassword(auth, email, pass);
         } catch (error) {
@@ -472,32 +447,17 @@
         }
     };
 
-    window.logOut = () => {
-        signOut(auth);
-        document.getElementById('auth-dropdown').classList.remove('show');
-        window.location.reload(); // Reload to clear local state visually
-    };
+    window.logOut = () => { signOut(auth); location.reload(); };
 
-    // 3. Monitor State (Handles both Google & Email logins)
     if(auth) {
         onAuthStateChanged(auth, async (user) => {
             const btn = document.getElementById('main-auth-btn');
             const txt = document.getElementById('backup-text');
-            
             if (user) {
-                currentUser = user;
-                closeAuthModal();
-                // Use Google name if available, otherwise email
-                const displayName = user.displayName || user.email.split('@')[0];
-                btn.innerHTML = `👤 ${displayName}`;
-                txt.innerText = "Cloud Sync Active ✅";
-                txt.style.color = "var(--success)";
+                currentUser = user; closeAuthModal();
+                btn.innerHTML = `👤 ${user.displayName || user.email.split('@')[0]}`;
+                txt.innerText = "Cloud Sync Active ✅"; txt.style.color = "var(--success)";
                 await loadFromCloud(user.uid);
-            } else {
-                currentUser = null;
-                btn.innerHTML = `🔒 Log In / Sign Up`;
-                txt.innerText = "Want to backup your bank?";
-                txt.style.color = "var(--text-secondary)";
             }
         });
     }
@@ -505,58 +465,42 @@
     async function loadFromCloud(uid) {
         const docRef = doc(db, "mistakeBanks", uid);
         const docSnap = await getDoc(docRef);
-
         if (docSnap.exists()) {
             const cloudData = JSON.parse(docSnap.data().json);
-            // Only ask to overwrite if local data is different and not empty
             if(window.quizData.length > 0 && JSON.stringify(window.quizData) !== JSON.stringify(cloudData)) {
-                if(confirm("Cloud backup found! Overwrite local data?")) {
-                    window.updateDataGlobal(cloudData);
-                }
-            } else {
-                window.updateDataGlobal(cloudData);
-            }
-        } else {
-            saveToCloud(); // New user, save empty/current state
-        }
+                if(confirm("Cloud backup found! Overwrite local data?")) window.updateDataGlobal(cloudData);
+            } else window.updateDataGlobal(cloudData);
+        } else saveToCloud();
     }
 
-    window.forceCloudSync = () => {
-        saveToCloud(true);
-        document.getElementById('auth-dropdown').classList.remove('show');
-    }
+    window.forceCloudSync = () => saveToCloud(true);
 
     async function saveToCloud(notify = false) {
-        if(!currentUser || !db) return;
+        if(!currentUser || !window.quizData) return;
         try {
             await setDoc(doc(db, "mistakeBanks", currentUser.uid), {
-                json: JSON.stringify(window.quizData),
-                lastUpdated: new Date()
+                json: JSON.stringify(window.quizData), lastUpdated: new Date()
             });
             if(notify) alert("Saved to Cloud! ☁️");
-        } catch(e) {
-            console.error(e);
-            if(notify) alert("Save failed. Check console.");
-        }
+        } catch(e) { console.error(e); if(notify) alert("Save failed."); }
     }
-
     window.triggerCloudSave = () => saveToCloud();
 </script>
 
 <script>
     // --- MAIN APP LOGIC ---
-    let quizData = JSON.parse(localStorage.getItem('universalMistakeData')) || [];
+    window.quizData = JSON.parse(localStorage.getItem('universalMistakeData')) || [];
+    let quizData = window.quizData; 
     let currentTab = 'All';
     let globalNotesToggleState = false;
-    
-    // Global function for Firebase to update data
+
     window.updateDataGlobal = (newData) => {
-        quizData = newData;
-        saveData(false); // Save to local but don't loop cloud
-        render();
+        window.quizData = newData;
+        quizData = window.quizData;
+        saveData(false); render();
     };
 
-    const MODEL_CASCADE = ['gemini-3-pro-preview','gemini-3-flash-preview','gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-lite'];
+    const MODEL_CASCADE = ['gemini-3-pro-preview','gemini-3-flash-preview','gemini-2.5-pro','gemini-2.5-flash'];
 
     function formatModelName(m) {
         if(m.includes('gemini-3-pro')) return 'Gem 3 Pro';
@@ -574,26 +518,14 @@
     }
 
     const apiKeyInput = document.getElementById('apiKey');
-    const quizArea = document.getElementById('quiz-area');
-    const loadingDiv = document.getElementById('loading');
-    const loadingModelSpan = document.getElementById('loading-model');
-
     if(localStorage.getItem('geminiApiKey')) apiKeyInput.value = localStorage.getItem('geminiApiKey');
     apiKeyInput.addEventListener('change', (e) => localStorage.setItem('geminiApiKey', e.target.value));
 
-    // --- BACKUP DOWNLOAD ---
     window.downloadBackup = () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(quizData));
-        const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", "mistake_bank_backup.json");
-        document.body.appendChild(downloadAnchorNode);
-        downloadAnchorNode.click();
-        downloadAnchorNode.remove();
-        document.getElementById('auth-dropdown').classList.remove('show');
+        const dl = document.createElement('a'); dl.setAttribute("href", dataStr); dl.setAttribute("download", "mistake_backup.json"); dl.click();
     };
 
-    // --- AI LOGIC ---
     async function callGemini(apiKey, payload, index = 0) {
         if (index >= MODEL_CASCADE.length) throw new Error("All models failed.");
         const model = MODEL_CASCADE[index];
@@ -606,112 +538,81 @@
     }
 
     async function handleImageUpload(input) {
-        const files = Array.from(input.files);
-        if (files.length === 0) return;
-        const apiKey = apiKeyInput.value.trim();
-        if (!apiKey) return alert("Please enter API Key");
-        loadingDiv.style.display = 'block';
-
+        const files = Array.from(input.files), key = apiKeyInput.value.trim();
+        if (!key) return alert("Please enter API Key");
+        document.getElementById('loading').style.display = 'block';
         for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            loadingModelSpan.innerText = `Processing image ${i + 1} of ${files.length}...`;
+            document.getElementById('loading-model').innerText = `(${i+1}/${files.length})`;
             try {
-                const base64 = await new Promise(r => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => r(reader.result.split(',')[1]); });
-                const prompt = `Analyze screenshot. 1. DETECT SUBJECT STRICTLY: "Math", "Physics", "Chemistry", "Biology", "English", "Arabic", "Other". 2. EXTRACT QUESTION. 3. EXTRACT OPTIONS. 4. IDENTIFY CORRECT ANSWER. 5. DETECT USER MISTAKE. Output JSON: { "subject": "String", "question": "String", "options": ["A","B"], "answer": "String", "originalWrong": "String|null" }`;
-                const { data, model } = await callGemini(apiKey, { contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: file.type, data: base64 } }] }] });
-                const text = data.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
-                const result = JSON.parse(text);
-                if (!result.options.includes(result.answer)) result.options.push(result.answer);
-                quizData.push({ ...result, solved: false, userSelected: null, modelUsed: model, explanation: null, explanationModel: null, userNote: "", noteVisible: false });
-                saveData(); setTab('All');
-            } catch (e) { console.error("Failed on file " + i, e); }
+                const base64 = await new Promise(r => { const rd = new FileReader(); rd.readAsDataURL(files[i]); rd.onload = () => r(rd.result.split(',')[1]); });
+                const prompt = `Analyze screenshot. Output JSON: { "subject": "Math|Physics|Chemistry|Biology|English|Arabic", "question": "text", "options": ["A","B","C","D"], "answer": "text", "originalWrong": "text|null" }`;
+                const { data, model } = await callGemini(key, { contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: files[i].type, data: base64 } }] }] });
+                const res = JSON.parse(data.candidates[0].content.parts[0].text.replace(/```json|```/g, ''));
+                quizData.push({ ...res, solved: false, userSelected: null, modelUsed: model, userNote: "", noteVisible: false });
+                saveData(); render();
+            } catch (e) { console.error(e); }
         }
-        loadingDiv.style.display = 'none';
-        input.value = '';
+        document.getElementById('loading').style.display = 'none'; input.value = '';
     }
 
-    async function explainQuestion(index) {
-        const apiKey = apiKeyInput.value.trim();
-        if(!apiKey) return alert("Need API Key");
-        const item = quizData[index];
-        const btn = document.getElementById(`explain-btn-${index}`);
+    async function explainQuestion(idx) {
+        const key = apiKeyInput.value.trim(), item = quizData[idx], btn = document.getElementById(`explain-btn-${idx}`);
         btn.innerText = "Generating..."; btn.disabled = true;
         try {
-            const prompt = `Explain why "${item.answer}" is the correct answer for: "${item.question}". Be concise. Do NOT use Latex.`;
-            const { data, model } = await callGemini(apiKey, { contents: [{ parts: [{ text: prompt }] }] });
-            item.explanation = data.candidates[0].content.parts[0].text;
-            item.explanationModel = model;
-            saveData(); render(); 
-        } catch(e) { alert("Failed: " + e.message); btn.innerText = "Try Again"; btn.disabled = false; }
+            const { data, model } = await callGemini(key, { contents: [{ parts: [{ text: `Explain why "${item.answer}" is correct for: "${item.question}"` }] }] });
+            item.explanation = data.candidates[0].content.parts[0].text; item.explanationModel = model;
+            saveData(); render();
+        } catch(e) { btn.innerText = "Error"; btn.disabled = false; }
     }
 
-    function updateNote(index, text) { quizData[index].userNote = text; saveData(); }
-    function toggleNote(index) { quizData[index].noteVisible = !quizData[index].noteVisible; saveData(); render(); }
-    function toggleGlobalNotes() { globalNotesToggleState = !globalNotesToggleState; quizData.forEach(q => q.noteVisible = globalNotesToggleState); saveData(); render(); }
-    function setTab(t) { currentTab = t; document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('active'); if(b.innerText === t) b.classList.add('active'); }); render(); }
-
     function render() {
-        quizArea.innerHTML = '';
-        const filtered = currentTab === 'All' ? quizData : quizData.filter(i => { const s = (i.subject || '').toLowerCase(); const t = currentTab.toLowerCase(); return s.includes(t); });
-        if(!filtered.length) { quizArea.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">No questions in ${currentTab}</div>`; return; }
-
+        const area = document.getElementById('quiz-area'); area.innerHTML = '';
+        const filtered = currentTab === 'All' ? quizData : quizData.filter(q => (q.subject||'').toLowerCase().includes(currentTab.toLowerCase()));
         [...filtered].reverse().forEach(item => {
-            const realIndex = quizData.indexOf(item);
-            const card = document.createElement('div');
-            card.className = `question-card ${item.solved ? 'solved' : ''}`;
-            const modelShort = formatModelName(item.modelUsed || 'Unknown');
-            let explainHtml = item.explanation ? `<div class="explanation-box visible"><span class="explainer-tag">🧠 Explained by: ${formatModelName(item.explanationModel || item.modelUsed)}</span>${formatText(item.explanation)}</div>` : '';
-            
+            const i = quizData.indexOf(item);
+            const card = document.createElement('div'); card.className = `question-card ${item.solved?'solved':''}`;
             card.innerHTML = `
-                <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-                    <span class="subject-tag">${item.subject || 'General'}</span>
-                    <div class="card-actions">
-                        <button class="action-btn btn-clear" title="Toggle Note" onclick="toggleNote(${realIndex})">📝</button>
-                        <button class="action-btn btn-clear" title="Reset" onclick="resetOne(${realIndex})">↺</button>
-                        <button class="action-btn btn-clear" title="Delete" style="color:var(--error)" onclick="remove(${realIndex})">✕</button>
-                    </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span class="subject-tag">${item.subject||'General'}</span>
+                    <div><button class="action-btn btn-clear" onclick="toggleNote(${i})">📝</button><button class="action-btn btn-clear" style="color:red" onclick="remove(${i})">✕</button></div>
                 </div>
                 <div class="question-text">${formatText(item.question)}</div>
-                <div class="ai-badge ${item.modelUsed}">🤖 Generated by: ${modelShort}</div>
-                <div class="options-grid" id="grid-${realIndex}"></div>
-                ${!item.explanation ? `<button id="explain-btn-${realIndex}" class="explain-btn" onclick="explainQuestion(${realIndex})">💡 Explain Answer</button>` : ''}
-                ${explainHtml}
-                <div class="note-wrapper ${item.noteVisible ? 'visible' : ''}">
-                    <span class="note-label">YOUR NOTES:</span>
-                    <textarea class="user-note-input" placeholder="Write why you missed this..." oninput="updateNote(${realIndex}, this.value)">${item.userNote || ''}</textarea>
+                <div class="ai-badge ${item.modelUsed}">🤖 Model: ${formatModelName(item.modelUsed)}</div>
+                <div class="options-grid"></div>
+                ${item.explanation ? `<div class="explanation-box visible"><span class="explainer-tag">🧠 Logic (${formatModelName(item.explanationModel)})</span>${formatText(item.explanation)}</div>` : `<button id="explain-btn-${i}" class="explain-btn" onclick="explainQuestion(${i})">💡 Explain Answer</button>`}
+                <div class="note-wrapper ${item.noteVisible?'visible':''}">
+                    <textarea class="user-note-input" placeholder="Notes..." oninput="updateNote(${i}, this.value)">${item.userNote||''}</textarea>
                 </div>
             `;
             const grid = card.querySelector('.options-grid');
             item.options.forEach(opt => {
-                const btn = document.createElement('button');
-                btn.className = 'option-btn';
-                if(item.originalWrong === opt) btn.innerHTML = `${formatText(opt)}<div class="mistake-badge">PREVIOUS MISTAKE</div>`;
-                else btn.innerHTML = formatText(opt);
-                if(item.userSelected) {
-                    if(item.userSelected === opt) { btn.classList.add(opt === item.answer ? 'correct' : 'incorrect'); if(item.originalWrong === opt) btn.classList.add('show-badge'); }
-                    if(item.solved && opt === item.answer) btn.classList.add('correct');
-                }
-                if(item.solved) btn.classList.add('disabled'); else btn.onclick = () => handleAnswer(realIndex, opt);
-                grid.appendChild(btn);
+                const b = document.createElement('button'); b.className = 'option-btn';
+                b.innerHTML = formatText(opt) + (item.originalWrong === opt ? '<div class="mistake-badge">PREVIOUS MISTAKE</div>' : '');
+                if(item.userSelected === opt) b.classList.add(opt === item.answer ? 'correct' : 'incorrect');
+                if(item.solved && opt === item.answer) b.classList.add('correct');
+                b.onclick = () => { if(!item.solved) { item.userSelected = opt; if(opt === item.answer) item.solved = true; saveData(); render(); }};
+                grid.appendChild(b);
             });
-            quizArea.appendChild(card);
+            area.appendChild(card);
         });
     }
 
-    function handleAnswer(i, sel) { const item = quizData[i]; if(item.solved) return; item.userSelected = sel; if(sel === item.answer) item.solved = true; saveData(); render(); }
-    function remove(i) { if(confirm("Delete this?")) { quizData.splice(i,1); saveData(); render(); }}
-    function resetOne(i) { quizData[i].solved = false; quizData[i].userSelected = null; saveData(); render(); }
-    function revealAll() { if(confirm("Reveal All?")) { quizData.forEach(q=>q.solved=true); saveData(); render(); }}
-    function resetAllProgress() { if(confirm("Reset Progress?")) { quizData.forEach(q=>{q.solved=false;q.userSelected=null}); saveData(); render(); }}
-    function clearStorage() { if(confirm("Clear Local Data?")) { localStorage.removeItem('universalMistakeData'); quizData=[]; render(); }}
+    function updateNote(i, val) { quizData[i].userNote = val; saveData(); }
+    function toggleNote(i) { quizData[i].noteVisible = !quizData[i].noteVisible; render(); }
+    function toggleGlobalNotes() { globalNotesToggleState = !globalNotesToggleState; quizData.forEach(q => q.noteVisible = globalNotesToggleState); render(); }
+    function setTab(t) { currentTab = t; document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.innerText===t)); render(); }
+    function remove(i) { if(confirm("Delete?")) { quizData.splice(i,1); saveData(); render(); }}
+    function revealAll() { quizData.forEach(q=>q.solved=true); saveData(); render(); }
+    function resetAllProgress() { quizData.forEach(q=>{q.solved=false;q.userSelected=null}); saveData(); render(); }
+    function clearStorage() { if(confirm("Clear local?")) { localStorage.clear(); location.reload(); }}
     
     function saveData(syncCloud = true) { 
+        window.quizData = quizData;
         localStorage.setItem('universalMistakeData', JSON.stringify(quizData)); 
-        if(syncCloud && window.triggerCloudSave) window.triggerCloudSave();
+        if(syncCloud && window.triggerCloudSave) window.triggerCloudSave(); 
     }
 
     render();
 </script>
-
 </body>
 </html>
