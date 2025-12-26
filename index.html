@@ -467,10 +467,14 @@
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
             const cloudData = JSON.parse(docSnap.data().json);
-            if(window.quizData.length > 0 && JSON.stringify(window.quizData) !== JSON.stringify(cloudData)) {
-                if(confirm("Cloud backup found! Overwrite local data?")) window.updateDataGlobal(cloudData);
-            } else window.updateDataGlobal(cloudData);
-        } else saveToCloud();
+            // SILENT UPDATE: No more annoying pop-ups!
+            // It only updates if the cloud data is actually different
+            if (JSON.stringify(window.quizData) !== JSON.stringify(cloudData)) {
+                window.updateDataGlobal(cloudData);
+            }
+        } else {
+            saveToCloud();
+        }
     }
 
     window.forceCloudSync = () => saveToCloud(true);
