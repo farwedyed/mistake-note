@@ -1,6 +1,9 @@
 <!-- 
   FILENAME: index.html 
-  FIXES: 100% Original logic restored + Pro Real-time Cloud Sync
+  FIXES: 
+  1. Stale Data Overwrite (Sync Guard)
+  2. Typing Interruption (Debounce & Typing Status Check)
+  3. Swift Exit Protection (Save on close/tab switch)
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -479,6 +482,7 @@
     </aside>
 </div>
 
+<!-- (CONTINUED IN NEXT PART) -->
 <!-- FIREBASE REAL-TIME MODULE -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -499,8 +503,13 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+    
     let currentUser = null;
     let unsubscribeCloud = null;
+    
+    // --- SYNC GUARD ---
+    // Prevents overwriting cloud data with empty local data on startup
+    let isCloudInitialized = false;
 
     const modalBox = document.querySelector('.modal-box');
     const googleBtn = document.createElement('button');
@@ -520,49 +529,94 @@
     onAuthStateChanged(auth, (user) => {
         const btn = document.getElementById('main-auth-btn');
         const txt = document.getElementById('backup-text');
+        
         if (user) {
-            currentUser = user; document.getElementById('auth-modal').style.display='none';
+            currentUser = user; 
+            document.getElementById('auth-modal').style.display='none';
             btn.innerHTML = `👤 ${user.displayName || user.email.split('@')[0]}`;
-            txt.innerText = "Cloud Sync: LIVE 🟢"; txt.style.color = "var(--success)";
+            txt.innerText = "Syncing..."; 
+            txt.style.color = "var(--accent)";
             
+            // Reset guards on login
+            isCloudInitialized = false;
+
             const docRef = doc(db, "mistakeBanks", user.uid);
             unsubscribeCloud = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const cloudData = JSON.parse(docSnap.data().json);
-                    if (JSON.stringify(window.quizData) !== JSON.stringify(cloudData)) window.updateDataGlobal(cloudData);
-                } else saveToCloud();
+                    
+                    // Only update if data is different AND user is not actively typing
+                    if (JSON.stringify(window.quizData) !== JSON.stringify(cloudData)) {
+                        console.log("☁️ Cloud Update Received");
+                        window.updateDataGlobal(cloudData);
+                    }
+                    
+                    isCloudInitialized = true;
+                    txt.innerText = "Cloud Sync: LIVE 🟢"; 
+                    txt.style.color = "var(--success)";
+                } else {
+                    // New user or empty cloud
+                    isCloudInitialized = true;
+                    saveToCloud(); // Save initial local state to create file
+                    txt.innerText = "Cloud Sync: LIVE 🟢"; 
+                    txt.style.color = "var(--success)";
+                }
             });
         } else {
-            currentUser = null; btn.innerHTML = `🔒 Log In / Sign Up`;
+            currentUser = null; 
+            isCloudInitialized = false;
+            btn.innerHTML = `🔒 Log In / Sign Up`;
             txt.innerText = "Want to backup your bank?"; txt.style.color = "var(--text-secondary)";
             if (unsubscribeCloud) unsubscribeCloud();
         }
     });
 
     window.forceCloudSync = () => saveToCloud(true);
+    
     async function saveToCloud(notify = false) {
         if (!currentUser || !window.quizData) return;
+
+        // --- BLOCK SAVE IF CLOUD NOT LOADED YET ---
+        if (!isCloudInitialized) {
+            console.warn("🚫 Save blocked: Waiting for Cloud to initialize...");
+            return;
+        }
+
         try {
             await setDoc(doc(db, "mistakeBanks", currentUser.uid), { json: JSON.stringify(window.quizData), lastUpdated: new Date() });
             if (notify) alert("Saved to Cloud! ☁️");
         } catch(e) { console.error(e); }
     }
+    
     window.triggerCloudSave = () => saveToCloud();
 </script>
 
-<!-- ORIGINAL APP LOGIC RESTORED -->
+<!-- MAIN APP LOGIC -->
 <script>
     // --- STATE & CONFIG ---
     window.quizData = JSON.parse(localStorage.getItem('universalMistakeData')) || [];
     let quizData = window.quizData; 
     let currentTab = 'All';
     let globalNotesToggleState = false;
+    
+    // --- TYPING STATE MANAGEMENT ---
+    window.isUserTyping = false;
+    let debounceTimer = null;
 
+    // Called when Firebase receives new data
     window.updateDataGlobal = (newData) => {
-        window.quizData = newData;
-        quizData = window.quizData;
-        saveData(false);
-        render();
+        // If user is typing, update the data in background BUT DO NOT RENDER/REFRESH
+        if (window.isUserTyping) {
+            console.log("🤫 Silent Update (User is typing)...");
+            window.quizData = newData;
+            quizData = window.quizData;
+            // We do NOT call render() here to prevent cursor jumping
+        } else {
+            window.quizData = newData;
+            quizData = window.quizData;
+            saveData(false); // Update local storage
+            render();
+        }
     };
 
     const MODEL_CASCADE = [
@@ -581,7 +635,6 @@
         return m; 
     }
 
-    // ORIGINAL FORMATTER
     function formatText(text) {
         if (!text) return '';
         let cleaned = text
@@ -600,7 +653,6 @@
     if (localStorage.getItem('geminiApiKey')) apiKeyInput.value = localStorage.getItem('geminiApiKey');
     apiKeyInput.addEventListener('change', (e) => localStorage.setItem('geminiApiKey', e.target.value));
 
-    // ORIGINAL RECURSIVE AI LOGIC
     async function callGemini(apiKey, payload, index = 0) {
         if (index >= MODEL_CASCADE.length) throw new Error("All models failed.");
         const model = MODEL_CASCADE[index];
@@ -644,8 +696,10 @@
         } catch (e) { btn.innerText = "Error Try Again"; }
     }
 
-    // ORIGINAL RENDERING LOGIC (With Individal Reset & Mistake Badges)
     function render() {
+        // If typing, DO NOT RENDER (Safety Check)
+        if(window.isUserTyping) return;
+
         const area = document.getElementById('quiz-area'); area.innerHTML = '';
         const filtered = currentTab === 'All' ? quizData : quizData.filter(q => (q.subject || '').toLowerCase().includes(currentTab.toLowerCase()));
         [...filtered].reverse().forEach(item => {
@@ -697,8 +751,47 @@
         });
     }
 
-    // ORIGINAL FEATURE LOGIC
-    function updateNote(i, val) { quizData[i].userNote = val; saveData(); }
+    // --- SMARTER NOTE SAVING ---
+    // Handles debounce + immediate save on exit
+    function updateNote(i, val) { 
+        // 1. Mark as typing so incoming syncs don't disturb us
+        window.isUserTyping = true;
+        
+        // 2. Update local memory instantly
+        quizData[i].userNote = val; 
+        
+        // 3. Clear any existing timer
+        if (debounceTimer) clearTimeout(debounceTimer);
+        
+        // 4. Set new timer: Wait 1.5 seconds
+        debounceTimer = setTimeout(() => {
+            forceImmediateSave(); // Save when time is up
+        }, 1500);
+    }
+
+    // --- FORCE SAVE FUNCTION ---
+    // Callable by the timer OR by the "Swift Exit" triggers
+    function forceImmediateSave() {
+        if (debounceTimer) clearTimeout(debounceTimer); // Kill timer
+        window.isUserTyping = false; // We are done typing
+        saveData(true); // Send to cloud NOW
+        console.log("💾 Forced Immediate Save");
+    }
+
+    // --- SWIFT EXIT PROTECTION ---
+    // If user switches tabs, minimizes app, or closes browser: SAVE INSTANTLY.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            forceImmediateSave();
+        }
+    });
+    
+    // Backup for PC browser closing
+    window.addEventListener('beforeunload', () => {
+        forceImmediateSave();
+    });
+    
+    // --- HELPER FUNCTIONS ---
     function toggleNote(i) { quizData[i].noteVisible = !quizData[i].noteVisible; render(); }
     function toggleGlobalNotes() { globalNotesToggleState = !globalNotesToggleState; quizData.forEach(q => q.noteVisible = globalNotesToggleState); render(); }
     function setTab(t) { currentTab = t; document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.innerText === t)); render(); }
@@ -709,13 +802,16 @@
     function clearStorage() { if (confirm("Clear local cache?")) { localStorage.clear(); location.reload(); } }
     
     function saveData(syncCloud = true) { 
-        window.quizData = quizData; localStorage.setItem('universalMistakeData', JSON.stringify(quizData)); 
+        window.quizData = quizData; 
+        localStorage.setItem('universalMistakeData', JSON.stringify(quizData)); 
         if (syncCloud && window.triggerCloudSave) window.triggerCloudSave(); 
     }
+    
     window.downloadBackup = () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(quizData));
         const dl = document.createElement('a'); dl.setAttribute("href", dataStr); dl.setAttribute("download", "backup.json"); dl.click();
     };
+    
     render();
 </script>
 </body>
