@@ -1,9 +1,11 @@
+
 <!-- 
   FILENAME: index.html 
   FIXES: 
   1. Stale Data Overwrite (Sync Guard)
   2. Typing Interruption (Debounce & Typing Status Check)
   3. Swift Exit Protection (Save on close/tab switch)
+  4. Minimizable AI Menu (Persisted state)
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -158,7 +160,43 @@
             top: 20px;
             max-width: 350px;
             border: 1px solid #e2e8f0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
         }
+
+        /* MINIMIZED STATE CSS */
+        .sidebar.minimized {
+            flex: 0 0 auto; /* Stop it from expanding */
+            width: auto;
+            max-width: 200px; /* Keep it tight */
+        }
+        .sidebar.minimized .sidebar-content {
+            display: none; /* Hide the descriptions */
+        }
+        .sidebar.minimized h2 {
+            margin-bottom: 0;
+            font-size: 1rem;
+        }
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .sidebar-toggle-btn {
+            background: #f1f5f9;
+            border: none;
+            width: 24px; height: 24px;
+            border-radius: 50%;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+        }
+        .sidebar-toggle-btn:hover { background: #e2e8f0; color: var(--accent); }
 
         .sidebar h2 { margin-top: 0; font-size: 1.2rem; color: var(--text-primary); }
         .sidebar p { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; }
@@ -452,32 +490,37 @@
         <div id="quiz-area"></div>
     </main>
 
-    <aside class="sidebar">
-        <h2>🤖 AI Brains Menu</h2>
-        <p>Know which model you are trusting.</p>
-        <div class="model-legend-item mod-box-3pro">
-            <div class="mod-name">Gem 3 Pro <span>💎</span></div>
-            <div class="mod-trust" style="color:var(--mod-3pro)">Trust Level: 99%</div>
-            <div class="mod-intensity">Very High Intensity</div>
-            <div class="mod-desc">The smartest model available. Rely on this for complex Physics or Math logic.</div>
+    <aside class="sidebar" id="mainSidebar">
+        <div class="sidebar-header" onclick="toggleSidebar()">
+            <h2>🤖 AI Brains Menu</h2>
+            <button class="sidebar-toggle-btn" id="sb-toggle-icon">➖</button>
         </div>
-        <div class="model-legend-item mod-box-3flash">
-            <div class="mod-name">Gem 3 Flash <span>⚡</span></div>
-            <div class="mod-trust" style="color:var(--mod-3flash)">Trust Level: 95%</div>
-            <div class="mod-intensity">High Intensity</div>
-            <div class="mod-desc">Very smart and faster. Great for Chemistry and Biology questions.</div>
-        </div>
-        <div class="model-legend-item mod-box-25pro">
-            <div class="mod-name">Gem 2.5 Pro <span>🧠</span></div>
-            <div class="mod-trust" style="color:var(--mod-25pro)">Trust Level: 90%</div>
-            <div class="mod-intensity">Medium Intensity</div>
-            <div class="mod-desc">Solid logic, good for languages and standard academic questions.</div>
-        </div>
-        <div class="model-legend-item mod-box-25flash">
-            <div class="mod-name">Gem 2.5 Flash <span>🚀</span></div>
-            <div class="mod-trust" style="color:var(--mod-25flash)">Trust Level: 55%</div>
-            <div class="mod-intensity">Low Intensity</div>
-            <div class="mod-desc">Not that smart. Fast but double-check the answer.</div>
+        <div class="sidebar-content">
+            <p>Know which model you are trusting.</p>
+            <div class="model-legend-item mod-box-3pro">
+                <div class="mod-name">Gem 3 Pro <span>💎</span></div>
+                <div class="mod-trust" style="color:var(--mod-3pro)">Trust Level: 99%</div>
+                <div class="mod-intensity">Very High Intensity</div>
+                <div class="mod-desc">The smartest model available. Rely on this for complex Physics or Math logic.</div>
+            </div>
+            <div class="model-legend-item mod-box-3flash">
+                <div class="mod-name">Gem 3 Flash <span>⚡</span></div>
+                <div class="mod-trust" style="color:var(--mod-3flash)">Trust Level: 95%</div>
+                <div class="mod-intensity">High Intensity</div>
+                <div class="mod-desc">Very smart and faster. Great for Chemistry and Biology questions.</div>
+            </div>
+            <div class="model-legend-item mod-box-25pro">
+                <div class="mod-name">Gem 2.5 Pro <span>🧠</span></div>
+                <div class="mod-trust" style="color:var(--mod-25pro)">Trust Level: 90%</div>
+                <div class="mod-intensity">Medium Intensity</div>
+                <div class="mod-desc">Solid logic, good for languages and standard academic questions.</div>
+            </div>
+            <div class="model-legend-item mod-box-25flash">
+                <div class="mod-name">Gem 2.5 Flash <span>🚀</span></div>
+                <div class="mod-trust" style="color:var(--mod-25flash)">Trust Level: 55%</div>
+                <div class="mod-intensity">Low Intensity</div>
+                <div class="mod-desc">Not that smart. Fast but double-check the answer.</div>
+            </div>
         </div>
     </aside>
 </div>
@@ -508,7 +551,6 @@
     let unsubscribeCloud = null;
     
     // --- SYNC GUARD ---
-    // Prevents overwriting cloud data with empty local data on startup
     let isCloudInitialized = false;
 
     const modalBox = document.querySelector('.modal-box');
@@ -537,27 +579,22 @@
             txt.innerText = "Syncing..."; 
             txt.style.color = "var(--accent)";
             
-            // Reset guards on login
             isCloudInitialized = false;
 
             const docRef = doc(db, "mistakeBanks", user.uid);
             unsubscribeCloud = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const cloudData = JSON.parse(docSnap.data().json);
-                    
-                    // Only update if data is different AND user is not actively typing
                     if (JSON.stringify(window.quizData) !== JSON.stringify(cloudData)) {
                         console.log("☁️ Cloud Update Received");
                         window.updateDataGlobal(cloudData);
                     }
-                    
                     isCloudInitialized = true;
                     txt.innerText = "Cloud Sync: LIVE 🟢"; 
                     txt.style.color = "var(--success)";
                 } else {
-                    // New user or empty cloud
                     isCloudInitialized = true;
-                    saveToCloud(); // Save initial local state to create file
+                    saveToCloud(); 
                     txt.innerText = "Cloud Sync: LIVE 🟢"; 
                     txt.style.color = "var(--success)";
                 }
@@ -575,19 +612,15 @@
     
     async function saveToCloud(notify = false) {
         if (!currentUser || !window.quizData) return;
-
-        // --- BLOCK SAVE IF CLOUD NOT LOADED YET ---
         if (!isCloudInitialized) {
             console.warn("🚫 Save blocked: Waiting for Cloud to initialize...");
             return;
         }
-
         try {
             await setDoc(doc(db, "mistakeBanks", currentUser.uid), { json: JSON.stringify(window.quizData), lastUpdated: new Date() });
             if (notify) alert("Saved to Cloud! ☁️");
         } catch(e) { console.error(e); }
     }
-    
     window.triggerCloudSave = () => saveToCloud();
 </script>
 
@@ -603,18 +636,47 @@
     window.isUserTyping = false;
     let debounceTimer = null;
 
+    // --- SIDEBAR STATE MANAGEMENT ---
+    function initSidebar() {
+        const state = localStorage.getItem('sidebarState');
+        const sidebar = document.getElementById('mainSidebar');
+        const btn = document.getElementById('sb-toggle-icon');
+        
+        if (state === 'minimized') {
+            sidebar.classList.add('minimized');
+            btn.innerText = "➕";
+        } else {
+            btn.innerText = "➖";
+        }
+    }
+    
+    window.toggleSidebar = () => {
+        const sidebar = document.getElementById('mainSidebar');
+        const btn = document.getElementById('sb-toggle-icon');
+        sidebar.classList.toggle('minimized');
+        
+        if (sidebar.classList.contains('minimized')) {
+            localStorage.setItem('sidebarState', 'minimized');
+            btn.innerText = "➕";
+        } else {
+            localStorage.setItem('sidebarState', 'expanded');
+            btn.innerText = "➖";
+        }
+    };
+
+    // Initialize sidebar immediately
+    initSidebar();
+
     // Called when Firebase receives new data
     window.updateDataGlobal = (newData) => {
-        // If user is typing, update the data in background BUT DO NOT RENDER/REFRESH
         if (window.isUserTyping) {
             console.log("🤫 Silent Update (User is typing)...");
             window.quizData = newData;
             quizData = window.quizData;
-            // We do NOT call render() here to prevent cursor jumping
         } else {
             window.quizData = newData;
             quizData = window.quizData;
-            saveData(false); // Update local storage
+            saveData(false);
             render();
         }
     };
@@ -697,7 +759,6 @@
     }
 
     function render() {
-        // If typing, DO NOT RENDER (Safety Check)
         if(window.isUserTyping) return;
 
         const area = document.getElementById('quiz-area'); area.innerHTML = '';
@@ -752,41 +813,28 @@
     }
 
     // --- SMARTER NOTE SAVING ---
-    // Handles debounce + immediate save on exit
     function updateNote(i, val) { 
-        // 1. Mark as typing so incoming syncs don't disturb us
         window.isUserTyping = true;
-        
-        // 2. Update local memory instantly
         quizData[i].userNote = val; 
-        
-        // 3. Clear any existing timer
         if (debounceTimer) clearTimeout(debounceTimer);
-        
-        // 4. Set new timer: Wait 1.5 seconds
         debounceTimer = setTimeout(() => {
-            forceImmediateSave(); // Save when time is up
+            forceImmediateSave(); 
         }, 1500);
     }
 
-    // --- FORCE SAVE FUNCTION ---
-    // Callable by the timer OR by the "Swift Exit" triggers
     function forceImmediateSave() {
-        if (debounceTimer) clearTimeout(debounceTimer); // Kill timer
-        window.isUserTyping = false; // We are done typing
-        saveData(true); // Send to cloud NOW
+        if (debounceTimer) clearTimeout(debounceTimer);
+        window.isUserTyping = false; 
+        saveData(true); 
         console.log("💾 Forced Immediate Save");
     }
 
-    // --- SWIFT EXIT PROTECTION ---
-    // If user switches tabs, minimizes app, or closes browser: SAVE INSTANTLY.
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
             forceImmediateSave();
         }
     });
     
-    // Backup for PC browser closing
     window.addEventListener('beforeunload', () => {
         forceImmediateSave();
     });
